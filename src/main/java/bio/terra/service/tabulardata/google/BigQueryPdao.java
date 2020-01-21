@@ -1,6 +1,7 @@
 package bio.terra.service.tabulardata.google;
 
 import bio.terra.app.configuration.ApplicationConfiguration;
+import bio.terra.model.SnapshotProvidedIdsRequestContentsModel;
 import bio.terra.service.dataset.exception.IngestFailureException;
 import bio.terra.service.dataset.exception.IngestFileNotFoundException;
 import bio.terra.service.dataset.exception.IngestInterruptedException;
@@ -21,6 +22,7 @@ import bio.terra.common.PdaoLoadStatistics;
 import bio.terra.common.PrimaryDataAccess;
 import bio.terra.common.exception.PdaoException;
 import bio.terra.service.resourcemanagement.DataLocationService;
+import bio.terra.service.snapshot.exception.CorruptMetadataException;
 import com.google.cloud.bigquery.Acl;
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.BigQueryError;
@@ -52,6 +54,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static bio.terra.common.PdaoConstant.*;
@@ -116,6 +119,34 @@ public class BigQueryPdao implements PrimaryDataAccess {
         return bigQueryProject.deleteDataset(prefixName(dataset.getName()));
     }
 
+    @Override
+    public RowIdMatch mapValuesToRows(Snapshot snapshot, SnapshotSource source, List<String> inputValues) {
+        AssetSpecification asset = source.getAssetSpecification();
+        Column column = asset.getRootColumn().getDatasetColumn();
+        return collectRowIdMatches(snapshot, source, column, inputValues);
+    }
+
+    // for each table in a dataset (source), collect row id matches ON the row id
+    public RowIdMatch matchRowIds(Snapshot snapshot, SnapshotSource source, String tableName, List<String> rowIds) {
+        Optional<SnapshotMapTable> optTable = source.getSnapshotMapTables()
+            .stream()
+            .filter(table -> table.getFromTable().getName().equals(tableName))
+            .findFirst();
+        // check that both the table and row id column exist -- these should have been caught by validation
+        if (!optTable.isPresent()) {
+            throw new CorruptMetadataException("No matching table found for: " + tableName);
+        }
+        Optional<SnapshotMapColumn> optColumn = optTable.get().getSnapshotMapColumns()
+            .stream()
+            .filter(column -> column.getFromColumn().getName().equals(PDAO_ROW_ID_COLUMN))
+            .findFirst();
+        if (!optColumn.isPresent()) {
+            throw new CorruptMetadataException("No row id column found in: " + tableName);
+        }
+        return collectRowIdMatches(snapshot, source, optColumn.get().getFromColumn(), rowIds);
+    }
+
+
     // compute the row ids from the input ids and validate all inputs have matches
     // Add new public method that takes the asset and the snapshot source and the input values and
     // returns a structure with the matching row ids (suitable for calling create snapshot)
@@ -131,10 +162,8 @@ public class BigQueryPdao implements PrimaryDataAccess {
     // - do the query
     // - truncate (even tidier...)
     // So if we need to make this work in the long term, we can take that approach.
-    @Override
-    public RowIdMatch mapValuesToRows(Snapshot snapshot,
-                                      SnapshotSource source,
-                                      List<String> inputValues) {
+    private RowIdMatch collectRowIdMatches(
+            Snapshot snapshot, SnapshotSource source, Column column, List<String> inputValues) {
         BigQueryProject bigQueryProject = bigQueryProjectForSnapshot(snapshot);
         String projectId = bigQueryProject.getProjectId();
         /*
@@ -146,8 +175,6 @@ public class BigQueryPdao implements PrimaryDataAccess {
         */
 
         // One source: grab it and navigate to the relevant parts
-        AssetSpecification asset = source.getAssetSpecification();
-        Column column = asset.getRootColumn().getDatasetColumn();
         String datasetColumnName = column.getName();
         String datasetTableName = column.getTable().getName();
         String datasetBqDatasetName = prefixName(source.getDataset().getName());
@@ -195,8 +222,11 @@ public class BigQueryPdao implements PrimaryDataAccess {
         return rowIdMatch;
     }
 
-    @Override
-    public void createSnapshot(Snapshot snapshot, List<String> rowIds) {
+    private interface BigQuerySnapshotVisitor {
+        void visit(BigQueryProject bqProject);
+    }
+
+    public void createSnapshotWithVisitor(Snapshot snapshot, BigQuerySnapshotVisitor visitor) {
         BigQueryProject bigQueryProject = bigQueryProjectForSnapshot(snapshot);
         String projectId = bigQueryProject.getProjectId();
         String snapshotName = snapshot.getName();
@@ -211,6 +241,61 @@ public class BigQueryPdao implements PrimaryDataAccess {
             // create the row id table
             bigQueryProject.createTable(snapshotName, PDAO_ROW_ID_TABLE, rowIdTableSchema());
 
+            // now that the dataset is created with a row_id table, have the visitor fill in row and table ids
+            visitor.visit(bigQueryProject);
+
+            // NOTE: when we have multiple sources, we can put this into a loop
+            SnapshotSource source = snapshot.getSnapshotSources().get(0);
+            String datasetBqDatasetName = prefixName(source.getDataset().getName());
+
+            // create the views
+            List<String> bqTableNames = createViews(datasetBqDatasetName, snapshotName, snapshot, projectId, bigQuery);
+
+            // set authorization on views
+            List<Acl> acls = convertToViewAcls(projectId, snapshotName, bqTableNames);
+            bigQueryProject.addDatasetAcls(datasetBqDatasetName, acls);
+        } catch (Exception ex) {
+            throw new PdaoException("createSnapshot failed", ex);
+        }
+    }
+
+    public void createSnapshotWithProvidedIds(
+        Snapshot snapshot,
+        SnapshotProvidedIdsRequestContentsModel contentsModel) {
+        SnapshotSource source = snapshot.getSnapshotSources().get(0);
+
+        createSnapshotWithVisitor(snapshot, bigQueryProject -> {
+            String projectId = bigQueryProject.getProjectId();
+            String snapshotName = snapshot.getName();
+            String datasetBqDatasetName = prefixName(contentsModel.getDatasetName());
+
+            contentsModel.getTables().forEach(table -> {
+                String tableName = table.getTableName();
+                Table sourceTable = source
+                    .reverseTableLookup(tableName)
+                    .orElseThrow(() -> new CorruptMetadataException("cannot find destination table: " + tableName));
+
+                String sql = loadRowIdsSql(
+                    snapshotName,
+                    sourceTable.getId().toString(),
+                    table.getRowIds(),
+                    projectId,
+                    prefixSoftDeleteTableName(sourceTable.getName()),
+                    datasetBqDatasetName);
+                if (sql != null) {
+                    bigQueryProject.query(sql);
+                }
+            });
+        });
+    }
+
+    @Override
+    public void createSnapshot(Snapshot snapshot, List<String> rowIds) {
+        createSnapshotWithVisitor(snapshot, bigQueryProject -> {
+            String projectId = bigQueryProject.getProjectId();
+            String snapshotName = snapshot.getName();
+            BigQuery bigQuery = bigQueryProject.getBigQuery();
+
             // populate root row ids. Must happen before the relationship walk.
             // NOTE: when we have multiple sources, we can put this into a loop
             SnapshotSource source = snapshot.getSnapshotSources().get(0);
@@ -219,7 +304,7 @@ public class BigQueryPdao implements PrimaryDataAccess {
             AssetSpecification asset = source.getAssetSpecification();
             Table rootTable = asset.getRootTable().getTable();
             String rootTableId = rootTable.getId().toString();
-            String sql = loadRootRowIdsSql(snapshotName,
+            String sql = loadRowIdsSql(snapshotName,
                 rootTableId,
                 rowIds,
                 projectId,
@@ -245,16 +330,7 @@ public class BigQueryPdao implements PrimaryDataAccess {
             // walk and populate relationship table row ids
             List<WalkRelationship> walkRelationships = WalkRelationship.ofAssetSpecification(asset);
             walkRelationships(datasetBqDatasetName, snapshotName, walkRelationships, rootTableId, projectId, bigQuery);
-
-            // create the views
-            List<String> bqTableNames = createViews(datasetBqDatasetName, snapshotName, snapshot, projectId, bigQuery);
-
-            // set authorization on views
-            List<Acl> acls = convertToViewAcls(projectId, snapshotName, bqTableNames);
-            bigQueryProject.addDatasetAcls(datasetBqDatasetName, acls);
-        } catch (Exception ex) {
-            throw new PdaoException("createSnapshot failed", ex);
-        }
+        });
     }
 
     @Override
@@ -822,12 +898,12 @@ public class BigQueryPdao implements PrimaryDataAccess {
     // This is more expensive than streaming the input, but does not introduce visibility
     // issues with the new data. It has the same number of values limitation as the
     // validate row ids.
-    private String loadRootRowIdsSql(String snapshotName,
-                                     String tableId,
-                                     List<String> rowIds,
-                                     String projectId,
-                                     String softDeletesTableName,
-                                     String bqDatasetName) {
+    private String loadRowIdsSql(String snapshotName,
+                                 String tableId,
+                                 List<String> rowIds,
+                                 String projectId,
+                                 String softDeletesTableName,
+                                 String bqDatasetName) {
         if (rowIds.size() == 0) {
             return null;
         }
