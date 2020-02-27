@@ -30,7 +30,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
@@ -121,32 +123,71 @@ public class GcsPdao {
             System.out.println("Total Memory:" + runtime.totalMemory() / mb);
             System.out.println("Max Memory:" + runtime.maxMemory() / mb);
 
-            // mariko timing start
+            // timer start
             long nsStart = System.nanoTime();
 
-            Long megabytesPerChunk = Long.valueOf(20);
-            Storage.CopyRequest request =
-                Storage.CopyRequest.newBuilder()
-                    .setSource(sourceBlob.getBlobId())
-                    .setTarget(BlobId.of(bucketResource.getName(), targetPath))
-                    .setMegabytesCopiedPerChunk(megabytesPerChunk)
-                    .build();
-            CopyWriter copyWriter = storage.copy(request);
+            // create an empty target blob
+            BlobId targetBlobId = BlobId.of(bucketResource.getName(), targetPath);
+            BlobInfo targetBlobInfo = BlobInfo.newBuilder(targetBlobId).build();
+            Blob targetBlob = storage.create(targetBlobInfo);
 
-            int rpcCtr = 0;
-            while (!copyWriter.isDone()) {
-                copyWriter.copyChunk();
-                rpcCtr++;
-            }
-            Blob targetBlob = copyWriter.getResult();
+//            // download the source blob to the target blob using a shared output stream
+            WriteChannel targetBlobWriter = targetBlob.writer();
+//            WriteChannel targetBlobWriter = storage.writer(targetBlobInfo);
+//            targetBlobWriter.setChunkSize(100 * 1048576); // 100MiB
+            sourceBlob.downloadTo(Channels.newOutputStream(targetBlobWriter));
 
-            // mariko timing end
+//            ReadChannel readChannel = null;
+//            WriteChannel writeChannel = null;
+//            try {
+//                readChannel = sourceBlob.reader();
+//                writeChannel = targetBlob.writer();
+//                readChannel.setChunkSize(100 * 1024 * 1024); // 100MB
+//                writeChannel.setChunkSize(100 * 1024 * 1024); // 100MB
+//                ByteBuffer bytes = ByteBuffer.allocate(100 * 1024 * 1024); // 100MB
+//                while (readChannel.read(bytes) > 0) {
+//                    bytes.flip();
+//                    writeChannel.write(bytes);
+//                    bytes.clear();
+//                }
+//                } catch (IOException ioEx) {
+//                throw new RuntimeException(ioEx);
+//            }
+//
+//            // cleanup channels
+//            try {
+//                readChannel.close();
+//                writeChannel.close();
+//            } catch (Exception ex) { }
+
+////            Long megabytesPerChunk = Long.valueOf(500);
+////            Storage.CopyRequest request =
+////                Storage.CopyRequest.newBuilder()
+////                    .setSource(sourceBlob.getBlobId())
+////                    .setTarget(BlobId.of(bucketResource.getName(), targetPath), Storage.BlobTargetOption.disableGzipContent())
+////                    .setMegabytesCopiedPerChunk(megabytesPerChunk)
+////                    .build();
+////            CopyWriter copyWriter = storage.copy(request);
+////            CopyWriter copyWriter = sourceBlob.copyTo(BlobId.of(bucketResource.getName(), targetPath));
+//
+//            int rpcCtr = 0;
+//            while (!copyWriter.isDone()) {
+//                copyWriter.copyChunk();
+//                rpcCtr++;
+//            }
+//            Blob targetBlob = copyWriter.getResult();
+
+            // timer end
             long nsEnd = System.nanoTime();
             long nsElapsed = (nsEnd - nsStart);
             System.out.println("nsElapsed = " + nsElapsed);
             System.out.println("secElapsed = " + nsElapsed/Math.pow(10,9));
-            System.out.println("rpcCtr = " + rpcCtr);
-            System.out.println("megabytesPerChunk = " + megabytesPerChunk);
+//            System.out.println("rpcCtr = " + rpcCtr);
+
+            if (targetBlob == null) {
+                System.out.println("targetBlob = null");
+                throw new RuntimeException("targetBlob = null");
+            }
 
             // MD5 is computed per-component. So if there are multiple components, the MD5 here is
             // not useful for validating the contents of the file on access. Therefore, we only
