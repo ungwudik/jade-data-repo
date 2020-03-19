@@ -41,6 +41,7 @@ import bio.terra.service.iam.PolicyMemberValidator;
 import bio.terra.service.iam.exception.IamUnauthorizedException;
 import bio.terra.service.job.JobService;
 import bio.terra.service.snapshot.Snapshot;
+import bio.terra.service.snapshot.SnapshotRequestContainer;
 import bio.terra.service.snapshot.SnapshotRequestValidator;
 import bio.terra.service.snapshot.SnapshotService;
 import bio.terra.service.snapshot.SnapshotSource;
@@ -350,6 +351,20 @@ public class RepositoryApiController implements RepositoryApi {
 
     @Override
     public ResponseEntity<JobModel> createSnapshot(@Valid @RequestBody SnapshotRequestModel snapshotRequestModel) {
+        AuthenticatedUserRequest userReq = getAuthenticatedInfo();
+        Snapshot snapshot = snapshotService.makeSnapshotFromSnapshotRequest(snapshotRequestModel);
+        List<SnapshotSource> unauthorized = getUnauthorizedSources(snapshot, userReq);
+        if (unauthorized.isEmpty()) {
+            String jobId = snapshotService.createSnapshot(snapshotRequestModel, userReq);
+            // we can retrieve the job we just created
+            return jobToResponse(jobService.retrieveJob(jobId, userReq));
+        }
+        throw new IamUnauthorizedException(
+            "User is not authorized to create snapshots for these datasets " + unauthorized);
+    }
+
+    @Override
+    public ResponseEntity<JobModel> createSnapshotFromQuery(@Valid @RequestBody SnapshotRequestModel snapshotRequestModel) {
         AuthenticatedUserRequest userReq = getAuthenticatedInfo();
         Snapshot snapshot = snapshotService.makeSnapshotFromSnapshotRequest(snapshotRequestModel);
         List<SnapshotSource> unauthorized = getUnauthorizedSources(snapshot, userReq);
