@@ -7,6 +7,7 @@ import bio.terra.service.filedata.FileService;
 import bio.terra.service.filedata.google.firestore.FireStoreDao;
 import bio.terra.service.filedata.google.firestore.FireStoreUtils;
 import bio.terra.service.filedata.google.gcs.GcsPdao;
+import bio.terra.service.iam.AuthenticatedUserRequest;
 import bio.terra.service.job.JobMapKeys;
 import bio.terra.service.resourcemanagement.DataLocationService;
 import bio.terra.stairway.Flight;
@@ -43,6 +44,9 @@ public class FileIngestWorkerFlight extends Flight {
         UUID datasetId = UUID.fromString(inputParameters.get(JobMapKeys.DATASET_ID.getKeyName(), String.class));
         Dataset dataset = datasetService.retrieve(datasetId);
 
+        AuthenticatedUserRequest userReq = inputParameters.get(
+            JobMapKeys.AUTH_USER_INFO.getKeyName(), AuthenticatedUserRequest.class);
+
         RetryRuleRandomBackoff fileSystemRetry = new RetryRuleRandomBackoff(500, appConfig.getMaxStairwayThreads(), 5);
 
         // The flight plan:
@@ -64,7 +68,7 @@ public class FileIngestWorkerFlight extends Flight {
         addStep(new IngestFileIdStep());
         addStep(new IngestFileDirectoryStep(fileDao, fireStoreUtils, dataset), fileSystemRetry);
         addStep(new IngestFilePrimaryDataLocationStep(fileDao, dataset, locationService));
-        addStep(new IngestFilePrimaryDataStep(fileDao, dataset, gcsPdao));
+        addStep(new IngestFilePrimaryDataStep(fileDao, dataset, gcsPdao, userReq));
         addStep(new IngestFileFileStep(fileDao, fileService, dataset), fileSystemRetry);
     }
 

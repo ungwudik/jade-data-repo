@@ -1,5 +1,6 @@
 package bio.terra.service.filedata.google.gcs;
 
+import bio.terra.common.HttpUtils;
 import bio.terra.service.filedata.google.firestore.FireStoreDao;
 import bio.terra.service.filedata.google.firestore.FireStoreFile;
 import bio.terra.service.dataset.Dataset;
@@ -11,9 +12,11 @@ import bio.terra.common.exception.PdaoException;
 import bio.terra.common.exception.PdaoFileCopyException;
 import bio.terra.common.exception.PdaoInvalidUriException;
 import bio.terra.common.exception.PdaoSourceFileNotFoundException;
+import bio.terra.service.iam.AuthenticatedUserRequest;
 import bio.terra.service.resourcemanagement.google.GoogleBucketResource;
 import bio.terra.service.resourcemanagement.google.GoogleProjectResource;
 import bio.terra.service.resourcemanagement.DataLocationService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.cloud.storage.Acl;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.BlobId;
@@ -27,10 +30,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import javax.security.auth.login.LoginContext;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Component
@@ -62,7 +68,8 @@ public class GcsPdao {
     public FSFileInfo copyFile(Dataset dataset,
                                FileLoadModel fileLoadModel,
                                String fileId,
-                               GoogleBucketResource bucketResource) {
+                               GoogleBucketResource bucketResource,
+                               AuthenticatedUserRequest userReq) {
 
 
         Storage storage = storageForBucket(bucketResource);
@@ -72,17 +79,52 @@ public class GcsPdao {
         String targetPath = dataset.getId().toString() + "/" + fileId;
 
         try {
-            // The documentation is vague whether or not it is important to copy by chunk. One set of
-            // examples does it and another doesn't.
-            //
-            // I have been seeing timeouts and I think they are due to particularly large files,
-            // so I changed exported the timeouts to application.properties to allow for tuning
-            // and I am changing this to copy chunks.
-            CopyWriter writer = sourceBlob.copyTo(BlobId.of(bucketResource.getName(), targetPath));
-            while (!writer.isDone()) {
-                writer.copyChunk();
+            String description = fileLoadModel.getDescription();
+            System.out.println("description = " + description);
+
+            long startTime = System.currentTimeMillis();
+            //---------------
+            if (description.equals("javaHttp")) {
+                System.out.println("javaHttp");
+                // https://storage.googleapis.com/storage/v1/b/[SOURCE_BUCKET_NAME]/
+                // o/[SOURCE_OBJECT_NAME]/rewriteTo/b/[DESTINATION_BUCKET_NAME]/o/[DESTINATION_OBJECT_NAME]
+                String urlStr = "https://storage.googleapis.com/storage/v1" +
+                    "/b/" + sourceBlob.getBucket() + "/o/" + sourceBlob.getName() +
+                    "/rewriteTo/b/" + dataset.getId().toString() + "/o/" + fileId;
+                System.out.println("urlStr = " + urlStr);
+                try {
+                    Map<String, Object> javaHttpResponse =
+                        HttpUtils.sendJavaHttpRequest(urlStr, "POST", userReq.getRequiredToken(), null);
+                    logger.info("statusCode: " + javaHttpResponse.get("statusCode"));
+                } catch (IOException ioEx) {
+                    System.out.println("ioEx caught: " + ioEx.getMessage());
+                    logger.error("javaHttp IOException", ioEx);
+                    throw new RuntimeException("mariko javaHttp failed");
+                }
+            } else if (description.equals("gsutil")) {
+                System.out.println("gsutil");
+                throw new RuntimeException("mariko gsutil failed");
+            } else {
+                System.out.println("javaClient");
+
+                // The documentation is vague whether or not it is important to copy by chunk. One set of
+                // examples does it and another doesn't.
+                //
+                // I have been seeing timeouts and I think they are due to particularly large files,
+                // so I changed exported the timeouts to application.properties to allow for tuning
+                // and I am changing this to copy chunks.
+                CopyWriter writer = sourceBlob.copyTo(BlobId.of(bucketResource.getName(), targetPath));
+                while (!writer.isDone()) {
+                    writer.copyChunk();
+                }
+                writer.getResult();
             }
-            Blob targetBlob = writer.getResult();
+            //---------------
+            long elapsedTime = System.currentTimeMillis() - startTime;
+            System.out.println("elapsedTime = " + elapsedTime);
+
+            Blob targetBlob = storage.get(bucketResource.getName(), targetPath,
+                Storage.BlobGetOption.fields(Storage.BlobField.values()));
 
             // MD5 is computed per-component. So if there are multiple components, the MD5 here is
             // not useful for validating the contents of the file on access. Therefore, we only

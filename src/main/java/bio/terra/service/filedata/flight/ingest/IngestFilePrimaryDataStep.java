@@ -6,6 +6,7 @@ import bio.terra.service.dataset.Dataset;
 import bio.terra.service.filedata.FSFileInfo;
 import bio.terra.model.FileLoadModel;
 import bio.terra.service.filedata.google.gcs.GcsPdao;
+import bio.terra.service.iam.AuthenticatedUserRequest;
 import bio.terra.service.resourcemanagement.google.GoogleBucketResource;
 import bio.terra.service.job.JobMapKeys;
 import bio.terra.stairway.FlightContext;
@@ -17,13 +18,16 @@ public class IngestFilePrimaryDataStep implements Step {
     private final FireStoreDao fileDao;
     private final GcsPdao gcsPdao;
     private final Dataset dataset;
+    private AuthenticatedUserRequest userReq;
 
     public IngestFilePrimaryDataStep(FireStoreDao fileDao,
                                      Dataset dataset,
-                                     GcsPdao gcsPdao) {
+                                     GcsPdao gcsPdao,
+                                     AuthenticatedUserRequest userReq) {
         this.fileDao = fileDao;
         this.gcsPdao = gcsPdao;
         this.dataset = dataset;
+        this.userReq = userReq;
     }
 
     @Override
@@ -40,7 +44,7 @@ public class IngestFilePrimaryDataStep implements Step {
             // copy the file.
             GoogleBucketResource bucketResource = workingMap.get(FileMapKeys.BUCKET_INFO, GoogleBucketResource.class);
 
-            FSFileInfo fsFileInfo = gcsPdao.copyFile(dataset, fileLoadModel, fileId, bucketResource);
+            FSFileInfo fsFileInfo = gcsPdao.copyFile(dataset, fileLoadModel, fileId, bucketResource, userReq);
             workingMap.put(FileMapKeys.FILE_INFO, fsFileInfo);
         }
         return StepResult.getStepResultSuccess();
