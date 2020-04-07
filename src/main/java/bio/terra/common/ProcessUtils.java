@@ -12,7 +12,7 @@ import java.util.List;
 
 public final class ProcessUtils {
 
-    private static Logger LOG = LoggerFactory.getLogger(ProcessUtils.class);
+    private static Logger logger = LoggerFactory.getLogger(ProcessUtils.class);
 
     private ProcessUtils() { }
 
@@ -27,7 +27,7 @@ public final class ProcessUtils {
         cmdArgs.add(0, cmd);
         ProcessBuilder procBuilder = new ProcessBuilder(cmdArgs);
         Process proc = procBuilder.start();
-//        LOG.info("started process: " + String.join(" ", cmdArgs));
+        logger.debug("started process: " + String.join(" ", cmdArgs));
 
         // read in all lines written to stdout
         BufferedReader bufferedReader =
@@ -35,7 +35,7 @@ public final class ProcessUtils {
         String outputLine;
         List<String> outputLines = new ArrayList<>();
         while ((outputLine = bufferedReader.readLine()) != null) {
-//            LOG.info(outputLine);
+            logger.debug(outputLine);
             outputLines.add(outputLine);
         }
         bufferedReader.close();

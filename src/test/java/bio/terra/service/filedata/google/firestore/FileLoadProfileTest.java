@@ -18,6 +18,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +29,8 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.junit.Assert.assertThat;
@@ -37,6 +41,8 @@ import static org.junit.Assert.assertThat;
 @ActiveProfiles({"google", "connectedtest"})
 @Category(Connected.class)
 public class FileLoadProfileTest {
+    private static Logger logger = LoggerFactory.getLogger(FileLoadProfileTest.class);
+
     @Autowired private MockMvc mvc;
     @Autowired private GoogleResourceConfiguration googleResourceConfiguration;
     @Autowired private ConnectedOperations connectedOperations;
@@ -47,6 +53,8 @@ public class FileLoadProfileTest {
     private String coreBillingAccountId;
     private BillingProfileModel profileModel;
     private DatasetSummaryModel datasetSummary;
+
+    private Map<Double, String> sizesToFiles;
 
     @Before
     public void setup() throws Exception {
@@ -71,6 +79,18 @@ public class FileLoadProfileTest {
             .addGroupItem(concurrentConfig)
             .addGroupItem(driverWaitConfig);
         configService.setConfig(configGroupModel);
+
+        // build map of source file paths to number of bytes in each, for calculating the bytes/sec
+        sizesToFiles = new HashMap<>();
+        sizesToFiles.put(Math.pow(10, 2), sourceFile100B);
+        sizesToFiles.put(Math.pow(10, 3), sourceFile1KB);
+        sizesToFiles.put(Math.pow(10, 4), sourceFile10KB);
+        sizesToFiles.put(Math.pow(10, 5), sourceFile100KB);
+        sizesToFiles.put(Math.pow(10, 6), sourceFile1MB);
+        sizesToFiles.put(Math.pow(10, 7), sourceFile10MB);
+        sizesToFiles.put(Math.pow(10, 8), sourceFile100MB);
+        sizesToFiles.put(Math.pow(10, 9), sourceFile1GB);
+        sizesToFiles.put(Math.pow(10, 10), sourceFile10GB);
     }
 
     @After
@@ -78,19 +98,45 @@ public class FileLoadProfileTest {
         connectedOperations.teardown();
     }
 
+    private static String sourceBucketName = "jade-testdata";
+    private static String sourceFolderName = "fileloadprofiletest";
+
+    private static String sourceFile100B = "100Bfile.txt";
+    private static String sourceFile1KB = "1KBfile.txt";
+    private static String sourceFile10KB = "10KBfile.txt";
+    private static String sourceFile100KB = "100KBfile.txt";
+    private static String sourceFile1MB = "1MBfile.txt";
+    private static String sourceFile10MB = "10MBfile.txt";
+    private static String sourceFile100MB = "100MBfile.txt";
+    private static String sourceFile1GB = "1GBfile.txt";
+    private static String sourceFile10GB = "10GBfile.txt";
+
+    private static int numRuns = 1;
+
     @Test
-    public void marikoTest() throws Exception {
+    public void profileFileCopyTest() throws Exception {
+        for (int ctr = 0; ctr < numRuns; ctr++) {
+            for (Map.Entry<Double, String> sizeToFile : sizesToFiles.entrySet()) {
+                Double size = sizeToFile.getKey();
+                String sourceFileName = sizeToFile.getValue();
+                logger.info("size = " + size + ", sourceFileName = " + sourceFileName);
+                fileLoad(sourceFileName);
+            }
+        }
+    }
+
+    private void fileLoad(String sourceFileName) throws Exception {
         URI sourceUri = new URI("gs",
-            "broad-jade-mm-ingestdata",
-            "/tsvTransferService.tsv",
+            sourceBucketName,
+            "/" + sourceFolderName + "/" + sourceFileName,
             null,
             null);
-        String targetPath = "/mariko/files/tsvTransferService.tsv";
+        String targetPath = "/" + sourceFileName;
 
         FileLoadModel fileLoadModel = new FileLoadModel()
             .sourcePath(sourceUri.toString())
             .description("gsutil")
-            .mimeType("text/tab-separated-values")
+            .mimeType("text/plain")
             .targetPath(targetPath)
             .profileId(profileModel.getId());
 
