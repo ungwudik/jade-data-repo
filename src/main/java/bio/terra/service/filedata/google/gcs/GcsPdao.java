@@ -1,6 +1,7 @@
 package bio.terra.service.filedata.google.gcs;
 
 import bio.terra.common.HttpUtils;
+import bio.terra.common.ProcessUtils;
 import bio.terra.service.filedata.google.firestore.FireStoreDao;
 import bio.terra.service.filedata.google.firestore.FireStoreFile;
 import bio.terra.service.dataset.Dataset;
@@ -17,6 +18,7 @@ import bio.terra.service.resourcemanagement.google.GoogleBucketResource;
 import bio.terra.service.resourcemanagement.google.GoogleProjectResource;
 import bio.terra.service.resourcemanagement.DataLocationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
 import com.google.cloud.storage.Acl;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.BlobId;
@@ -32,9 +34,13 @@ import org.springframework.stereotype.Component;
 
 import javax.security.auth.login.LoginContext;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -79,49 +85,43 @@ public class GcsPdao {
         String targetPath = dataset.getId().toString() + "/" + fileId;
 
         try {
-            String description = fileLoadModel.getDescription();
-            System.out.println("description = " + description);
+//            if (description.equals("javaHttp")) {
+//                System.out.println("javaHttp");
+//                try {
+//                    // https://storage.googleapis.com/storage/v1/b/[SOURCE_BUCKET_NAME]/
+//                    // o/[SOURCE_OBJECT_NAME]/rewriteTo/b/[DESTINATION_BUCKET_NAME]/o/[DESTINATION_OBJECT_NAME]
+//                    String sourceObjectName = URLEncoder.encode(sourceBlob.getName(),"UTF-8");
+//                    String targetObjectName = URLEncoder.encode(targetPath, "UTF-8");
+//                    String urlStr = "https://storage.googleapis.com/storage/v1" +
+//                        "/b/" + sourceBlob.getBucket() + "/o/" + sourceObjectName +
+//                        "/rewriteTo/b/" + bucketResource.getName() + "/o/" + targetObjectName;
+//                    System.out.println("urlStr = " + urlStr);
+//                    //String accessToken = userReq.getRequiredToken();
+//                    GoogleCredential credential = GoogleCredential.getApplicationDefault();
+//                    if (credential.createScopedRequired()) {
+//                        credential = credential.createScoped(
+//                            Collections.singletonList("https://www.googleapis.com/auth/cloud-platform"));
+//                    }
+//                    credential.getRefreshToken();
+//                    Map<String, Object> javaHttpResponse =
+//                        HttpUtils.sendJavaHttpRequest(urlStr, "POST", credential.getAccessToken(), null);
+//                    logger.info("statusCode: " + javaHttpResponse.get("statusCode"));
+//                } catch (IOException ioEx) {
+//                    System.out.println("ioEx caught: " + ioEx.getMessage());
+//                    logger.error("javaHttp IOException", ioEx);
+//                    throw new RuntimeException("mariko javaHttp failed");
+//                }
+//            }
 
             long startTime = System.currentTimeMillis();
-            //---------------
-            if (description.equals("javaHttp")) {
-                System.out.println("javaHttp");
-                // https://storage.googleapis.com/storage/v1/b/[SOURCE_BUCKET_NAME]/
-                // o/[SOURCE_OBJECT_NAME]/rewriteTo/b/[DESTINATION_BUCKET_NAME]/o/[DESTINATION_OBJECT_NAME]
-                String urlStr = "https://storage.googleapis.com/storage/v1" +
-                    "/b/" + sourceBlob.getBucket() + "/o/" + sourceBlob.getName() +
-                    "/rewriteTo/b/" + dataset.getId().toString() + "/o/" + fileId;
-                System.out.println("urlStr = " + urlStr);
-                try {
-                    Map<String, Object> javaHttpResponse =
-                        HttpUtils.sendJavaHttpRequest(urlStr, "POST", userReq.getRequiredToken(), null);
-                    logger.info("statusCode: " + javaHttpResponse.get("statusCode"));
-                } catch (IOException ioEx) {
-                    System.out.println("ioEx caught: " + ioEx.getMessage());
-                    logger.error("javaHttp IOException", ioEx);
-                    throw new RuntimeException("mariko javaHttp failed");
-                }
-            } else if (description.equals("gsutil")) {
-                System.out.println("gsutil");
-                throw new RuntimeException("mariko gsutil failed");
-            } else {
-                System.out.println("javaClient");
-
-                // The documentation is vague whether or not it is important to copy by chunk. One set of
-                // examples does it and another doesn't.
-                //
-                // I have been seeing timeouts and I think they are due to particularly large files,
-                // so I changed exported the timeouts to application.properties to allow for tuning
-                // and I am changing this to copy chunks.
-                CopyWriter writer = sourceBlob.copyTo(BlobId.of(bucketResource.getName(), targetPath));
-                while (!writer.isDone()) {
-                    writer.copyChunk();
-                }
-                writer.getResult();
-            }
-            //---------------
+            copyFileGsutil(sourceBlob, targetPath, bucketResource);
             long elapsedTime = System.currentTimeMillis() - startTime;
-            System.out.println("elapsedTime = " + elapsedTime);
+            System.out.println("gsutil elapsedTime = " + elapsedTime);
+
+            startTime = System.currentTimeMillis();
+            copyFileJavaClient(sourceBlob, targetPath, bucketResource);
+            elapsedTime = System.currentTimeMillis() - startTime;
+            System.out.println("javaclient elapsedTime = " + elapsedTime);
 
             Blob targetBlob = storage.get(bucketResource.getName(), targetPath,
                 Storage.BlobGetOption.fields(Storage.BlobField.values()));
@@ -163,6 +163,42 @@ public class GcsPdao {
             throw new PdaoFileCopyException("File ingest failed", ex);
         } catch (URISyntaxException ex) {
             throw new PdaoException("Bad URI of our own making", ex);
+        }
+    }
+
+    private void copyFileJavaClient(Blob sourceBlob,
+                                    String targetPath,
+                                    GoogleBucketResource bucketResource) {
+        // I have been seeing timeouts and I think they are due to particularly large files,
+        // so I changed exported the timeouts to application.properties to allow for tuning
+        CopyWriter writer = sourceBlob.copyTo(BlobId.of(bucketResource.getName(), targetPath));
+        while (!writer.isDone()) {
+            writer.copyChunk();
+        }
+        writer.getResult();
+    }
+
+    private void copyFileGsutil(Blob sourceBlob,
+                                String targetPath,
+                                GoogleBucketResource bucketResource) throws URISyntaxException {
+        try {
+            URI targetUri = new URI("gs",
+                bucketResource.getName(),
+                "/" + targetPath,
+                null,
+                null);
+
+            List<String> args = new ArrayList<>();
+            args.add("cp");
+            args.add(sourceBlob.getSelfLink());
+            args.add(targetUri.toString());
+            List<String> cmdResponse = ProcessUtils.executeCommand("gsutil", args);
+
+            // do something if there are any output lines -- I don't think that's expected from gsutil cp
+        } catch (IOException ioEx) {
+            System.out.println("exception caught: " + ioEx.getMessage());
+            logger.error("gsutil IOException", ioEx);
+            throw new RuntimeException("mariko gsutil failed");
         }
     }
 
