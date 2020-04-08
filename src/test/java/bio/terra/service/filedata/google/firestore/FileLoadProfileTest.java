@@ -29,7 +29,9 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -84,13 +86,13 @@ public class FileLoadProfileTest {
         sizesToFiles = new HashMap<>();
         sizesToFiles.put(Math.pow(10, 2), sourceFile100B);
         sizesToFiles.put(Math.pow(10, 3), sourceFile1KB);
-        sizesToFiles.put(Math.pow(10, 4), sourceFile10KB);
-        sizesToFiles.put(Math.pow(10, 5), sourceFile100KB);
-        sizesToFiles.put(Math.pow(10, 6), sourceFile1MB);
-        sizesToFiles.put(Math.pow(10, 7), sourceFile10MB);
-        sizesToFiles.put(Math.pow(10, 8), sourceFile100MB);
-        sizesToFiles.put(Math.pow(10, 9), sourceFile1GB);
-        sizesToFiles.put(Math.pow(10, 10), sourceFile10GB);
+//        sizesToFiles.put(Math.pow(10, 4), sourceFile10KB);
+//        sizesToFiles.put(Math.pow(10, 5), sourceFile100KB);
+//        sizesToFiles.put(Math.pow(10, 6), sourceFile1MB);
+//        sizesToFiles.put(Math.pow(10, 7), sourceFile10MB);
+//        sizesToFiles.put(Math.pow(10, 8), sourceFile100MB);
+//        sizesToFiles.put(Math.pow(10, 9), sourceFile1GB);
+//        sizesToFiles.put(Math.pow(10, 10), sourceFile10GB);
     }
 
     @After
@@ -114,18 +116,67 @@ public class FileLoadProfileTest {
     private static int numRuns = 1;
 
     @Test
-    public void profileFileCopyTest() throws Exception {
-        for (int ctr = 0; ctr < numRuns; ctr++) {
-            for (Map.Entry<Double, String> sizeToFile : sizesToFiles.entrySet()) {
-                Double size = sizeToFile.getKey();
-                String sourceFileName = sizeToFile.getValue();
-                logger.info("size = " + size + ", sourceFileName = " + sourceFileName);
-                fileLoad(sourceFileName);
+    public void profileFileCopyJavaClientTest() throws Exception {
+        String label = "javaClient";
+        setFileCopyConfig(true, label);
+        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy();
+        printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
+    }
+
+    @Test
+    public void profileFileCopyGsutilTest() throws Exception {
+        String label = "gsutil";
+        setFileCopyConfig(false, label);
+        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy();
+        printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
+    }
+
+    private void printSizesToMillisecondsMapAsCSV(Map<Double, List<Long>> sizesToMilliseconds, String label) {
+        System.out.println("label, sourceFileName, size, elapsedTime;");
+        for (Map.Entry<Double, List<Long>> sizeToMilliseconds : sizesToMilliseconds.entrySet()) {
+            Double size = sizeToMilliseconds.getKey();
+            List<Long> elapsedTimes = sizeToMilliseconds.getValue();
+            String sourceFileName = sizesToFiles.get(size);
+
+            for (int ctr = 0; ctr < elapsedTimes.size(); ctr++) {
+                System.out.println(label + "," + sourceFileName + "," + size + "," + elapsedTimes.get(ctr));
             }
         }
     }
 
-    private void fileLoad(String sourceFileName) throws Exception {
+    private void setFileCopyConfig(boolean fileCopyConfigValue, String configLabel) {
+        ConfigModel fileCopyConfig = configService.getConfig(ConfigEnum.FILE_COPY_USE_JAVA_CLIENT.name());
+        fileCopyConfig.setParameter(new ConfigParameterModel().value(String.valueOf(fileCopyConfigValue)));
+        ConfigGroupModel configGroupModel = new ConfigGroupModel()
+            .label("FileLoadProfileTest:" + configLabel)
+            .addGroupItem(fileCopyConfig);
+        configService.setConfig(configGroupModel);
+    }
+
+    private Map<Double, List<Long>> profileFileCopy() throws Exception {
+        Map<Double, List<Long>> sizesToMilliseconds = new HashMap<>();
+
+        // run the file copies and time them
+        for (Map.Entry<Double, String> sizeToFile : sizesToFiles.entrySet()) {
+            Double size = sizeToFile.getKey();
+            String sourceFileName = sizeToFile.getValue();
+            sizesToMilliseconds.put(size, new ArrayList<>());
+
+            for (int ctr = 0; ctr < numRuns; ctr++) {
+                long startTime = System.currentTimeMillis();
+                loadFile(sourceFileName);
+                long elapsedTime = System.currentTimeMillis() - startTime;
+
+                logger.info("size = " + size + ", sourceFileName = " + sourceFileName
+                    + ", elapsedTime = " + elapsedTime);
+                sizesToMilliseconds.get(size).add(elapsedTime);
+            }
+        }
+
+        return sizesToMilliseconds;
+    }
+
+    private void loadFile(String sourceFileName) throws Exception {
         URI sourceUri = new URI("gs",
             sourceBucketName,
             "/" + sourceFolderName + "/" + sourceFileName,

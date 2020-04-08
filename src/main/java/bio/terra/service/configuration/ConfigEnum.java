@@ -18,6 +18,7 @@ public enum ConfigEnum {
     LOAD_CONCURRENT_FILES,
     LOAD_CONCURRENT_INGESTS,
     LOAD_DRIVER_WAIT_SECONDS,
+    FILE_COPY_USE_JAVA_CLIENT,
 
     // -- faults --
     SAM_TIMEOUT_FAULT,

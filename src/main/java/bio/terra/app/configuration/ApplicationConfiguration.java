@@ -64,6 +64,11 @@ public class ApplicationConfiguration {
      */
     private int loadFilePopulateBatchSize;
 
+    /**
+     * Set to true to use Java client library to do file copy. False (default) is to use gsutil.
+     */
+    private boolean fileCopyUseJavaClient;
+
 
     public String getUserEmail() {
         return userEmail;
@@ -159,6 +164,14 @@ public class ApplicationConfiguration {
 
     public void setLoadFilePopulateBatchSize(int loadFilePopulateBatchSize) {
         this.loadFilePopulateBatchSize = loadFilePopulateBatchSize;
+    }
+
+    public boolean getFileCopyUseJavaClient() {
+        return fileCopyUseJavaClient;
+    }
+
+    public void setFileCopyUseJavaClient(boolean fileCopyUseJavaClient) {
+        this.fileCopyUseJavaClient = fileCopyUseJavaClient;
     }
 
     @Bean("jdbcTemplate")
