@@ -177,7 +177,6 @@ public class GcsPdao {
 
             // do something if there are any output lines -- I don't think that's expected from gsutil cp
         } catch (IOException ioEx) {
-            logger.error("gsutil IOException", ioEx);
             throw new PdaoException("gsutil call to copy file failed");
         }
     }

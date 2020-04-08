@@ -86,13 +86,13 @@ public class FileLoadProfileTest {
         sizesToFiles = new HashMap<>();
         sizesToFiles.put(Math.pow(10, 2), sourceFile100B);
         sizesToFiles.put(Math.pow(10, 3), sourceFile1KB);
-//        sizesToFiles.put(Math.pow(10, 4), sourceFile10KB);
-//        sizesToFiles.put(Math.pow(10, 5), sourceFile100KB);
-//        sizesToFiles.put(Math.pow(10, 6), sourceFile1MB);
-//        sizesToFiles.put(Math.pow(10, 7), sourceFile10MB);
-//        sizesToFiles.put(Math.pow(10, 8), sourceFile100MB);
-//        sizesToFiles.put(Math.pow(10, 9), sourceFile1GB);
-//        sizesToFiles.put(Math.pow(10, 10), sourceFile10GB);
+        sizesToFiles.put(Math.pow(10, 4), sourceFile10KB);
+        sizesToFiles.put(Math.pow(10, 5), sourceFile100KB);
+        sizesToFiles.put(Math.pow(10, 6), sourceFile1MB);
+        sizesToFiles.put(Math.pow(10, 7), sourceFile10MB);
+        sizesToFiles.put(Math.pow(10, 8), sourceFile100MB);
+        sizesToFiles.put(Math.pow(10, 9), sourceFile1GB);
+        sizesToFiles.put(Math.pow(10, 10), sourceFile10GB);
     }
 
     @After
@@ -100,7 +100,7 @@ public class FileLoadProfileTest {
         connectedOperations.teardown();
     }
 
-    private static String sourceBucketName = "jade-testdata";
+    private static String sourceBucketName = "jade-testdata-asiaregion";
     private static String sourceFolderName = "fileloadprofiletest";
 
     private static String sourceFile100B = "100Bfile.txt";
@@ -113,7 +113,7 @@ public class FileLoadProfileTest {
     private static String sourceFile1GB = "1GBfile.txt";
     private static String sourceFile10GB = "10GBfile.txt";
 
-    private static int numRuns = 1;
+    private static int numRuns = 3;
 
     @Test
     public void profileFileCopyJavaClientTest() throws Exception {
@@ -132,14 +132,14 @@ public class FileLoadProfileTest {
     }
 
     private void printSizesToMillisecondsMapAsCSV(Map<Double, List<Long>> sizesToMilliseconds, String label) {
-        System.out.println("label, sourceFileName, size, elapsedTime;");
-        for (Map.Entry<Double, List<Long>> sizeToMilliseconds : sizesToMilliseconds.entrySet()) {
-            Double size = sizeToMilliseconds.getKey();
-            List<Long> elapsedTimes = sizeToMilliseconds.getValue();
+        System.out.println(label + " file size, " + label + " elapsed time, file name");
+        for (int sizeCtr = 2; sizeCtr <= 10; sizeCtr++) {
+            Double size = Math.pow(10, sizeCtr);
+            List<Long> elapsedTimes = sizesToMilliseconds.get(size);
             String sourceFileName = sizesToFiles.get(size);
 
             for (int ctr = 0; ctr < elapsedTimes.size(); ctr++) {
-                System.out.println(label + "," + sourceFileName + "," + size + "," + elapsedTimes.get(ctr));
+                System.out.println(size + "," + elapsedTimes.get(ctr) + "," + sourceFileName);
             }
         }
     }
