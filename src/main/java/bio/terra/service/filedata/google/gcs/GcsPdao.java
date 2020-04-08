@@ -84,7 +84,7 @@ public class GcsPdao {
         try {
             // a config parameter controls the file copy method
             boolean fileCopyUseJavaClient = configService.getParameterValue(ConfigEnum.FILE_COPY_USE_JAVA_CLIENT);
-            logger.info("FILE_COPY_USE_JAVA_CLIENT = " + fileCopyUseJavaClient);
+            logger.debug("FILE_COPY_USE_JAVA_CLIENT = " + fileCopyUseJavaClient);
 
             long startTime = System.currentTimeMillis();
             Blob targetBlob;
@@ -100,7 +100,7 @@ public class GcsPdao {
                     Storage.BlobGetOption.fields(Storage.BlobField.values()));
             }
             long elapsedTime = System.currentTimeMillis() - startTime;
-            logger.info("elapsedTime = " + elapsedTime);
+            System.out.println();
 
             // MD5 is computed per-component. So if there are multiple components, the MD5 here is
             // not useful for validating the contents of the file on access. Therefore, we only

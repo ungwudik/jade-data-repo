@@ -15,7 +15,7 @@ import bio.terra.service.iam.IamService;
 import bio.terra.service.resourcemanagement.google.GoogleResourceConfiguration;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Test;
+import org.junit.Ignore;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -100,7 +100,9 @@ public class FileLoadProfileTest {
         connectedOperations.teardown();
     }
 
-    private static String sourceBucketName = "jade-testdata-asiaregion";
+    private static String sourceBucketNameUSCentralRegion = "jade-testdata";
+    private static String sourceBucketNameAsiaRegion = "jade-testdata-asiaregion";
+    private static String sourceBucketNameUSWestRegion = "jade-testdata-uswestregion";
     private static String sourceFolderName = "fileloadprofiletest";
 
     private static String sourceFile100B = "100Bfile.txt";
@@ -115,29 +117,65 @@ public class FileLoadProfileTest {
 
     private static int numRuns = 3;
 
-    @Test
-    public void profileFileCopyJavaClientTest() throws Exception {
-        String label = "javaClient";
+    @Ignore
+    public void profileFileCopyJavaClientUSCentralTest() throws Exception {
+        String label = "javaClient USCentral";
         setFileCopyConfig(true, label);
-        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy();
+        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameUSCentralRegion);
         printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
     }
 
-    @Test
-    public void profileFileCopyGsutilTest() throws Exception {
-        String label = "gsutil";
+    @Ignore
+    public void profileFileCopyGsutilUSCentralTest() throws Exception {
+        String label = "gsutil USCentral";
         setFileCopyConfig(false, label);
-        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy();
+        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameUSCentralRegion);
+        printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
+    }
+
+    @Ignore
+    public void profileFileCopyJavaClientUSWestTest() throws Exception {
+        String label = "javaClient USCentral";
+        setFileCopyConfig(true, label);
+        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameUSWestRegion);
+        printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
+    }
+
+    @Ignore
+    public void profileFileCopyGsutilUSWestTest() throws Exception {
+        String label = "gsutil USCentral";
+        setFileCopyConfig(false, label);
+        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameUSWestRegion);
+        printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
+    }
+
+    @Ignore
+    public void profileFileCopyJavaClientAsiaTest() throws Exception {
+        String label = "javaClient Asia";
+        setFileCopyConfig(true, label);
+        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameAsiaRegion);
+        printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
+    }
+
+    @Ignore
+    public void profileFileCopyGsutilAsiaTest() throws Exception {
+        String label = "gsutil Asia";
+        setFileCopyConfig(false, label);
+        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameAsiaRegion);
         printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
     }
 
     private void printSizesToMillisecondsMapAsCSV(Map<Double, List<Long>> sizesToMilliseconds, String label) {
-        System.out.println(label + " file size, " + label + " elapsed time, file name");
+        System.out.println("file size,elapsed time,file name");
+        System.out.println(label + "," + label + "," + label);
         for (int sizeCtr = 2; sizeCtr <= 10; sizeCtr++) {
             Double size = Math.pow(10, sizeCtr);
             List<Long> elapsedTimes = sizesToMilliseconds.get(size);
             String sourceFileName = sizesToFiles.get(size);
 
+            if (elapsedTimes == null) {
+                continue; // make this error tolerant when we comment out some of the files in setup()
+            }
             for (int ctr = 0; ctr < elapsedTimes.size(); ctr++) {
                 System.out.println(size + "," + elapsedTimes.get(ctr) + "," + sourceFileName);
             }
@@ -153,7 +191,7 @@ public class FileLoadProfileTest {
         configService.setConfig(configGroupModel);
     }
 
-    private Map<Double, List<Long>> profileFileCopy() throws Exception {
+    private Map<Double, List<Long>> profileFileCopy(String sourceBucketName) throws Exception {
         Map<Double, List<Long>> sizesToMilliseconds = new HashMap<>();
 
         // run the file copies and time them
@@ -164,7 +202,7 @@ public class FileLoadProfileTest {
 
             for (int ctr = 0; ctr < numRuns; ctr++) {
                 long startTime = System.currentTimeMillis();
-                loadFile(sourceFileName);
+                loadFile(sourceBucketName, sourceFileName);
                 long elapsedTime = System.currentTimeMillis() - startTime;
 
                 logger.info("size = " + size + ", sourceFileName = " + sourceFileName
@@ -176,7 +214,7 @@ public class FileLoadProfileTest {
         return sizesToMilliseconds;
     }
 
-    private void loadFile(String sourceFileName) throws Exception {
+    private void loadFile(String sourceBucketName, String sourceFileName) throws Exception {
         URI sourceUri = new URI("gs",
             sourceBucketName,
             "/" + sourceFolderName + "/" + sourceFileName,
