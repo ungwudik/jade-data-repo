@@ -16,7 +16,6 @@ import bio.terra.service.resourcemanagement.google.GoogleResourceConfiguration;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
-import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -31,6 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,16 +85,16 @@ public class FileLoadProfileTest {
 
         // build map of source file paths to number of bytes in each, for calculating the bytes/sec
         sizesToFiles = new HashMap<>();
-//        sizesToFiles.put(Math.pow(10, 2), sourceFile100B);
-//        sizesToFiles.put(Math.pow(10, 3), sourceFile1KB);
-//        sizesToFiles.put(Math.pow(10, 4), sourceFile10KB);
-//        sizesToFiles.put(Math.pow(10, 5), sourceFile100KB);
-//        sizesToFiles.put(Math.pow(10, 6), sourceFile1MB);
-//        sizesToFiles.put(Math.pow(10, 7), sourceFile10MB);
-//        sizesToFiles.put(Math.pow(10, 8), sourceFile100MB);
-//        sizesToFiles.put(Math.pow(10, 9), sourceFile1GB);
-//        sizesToFiles.put(Math.pow(10, 10), sourceFile10GB);
-//        sizesToFiles.put(2 * Math.pow(10, 10), sourceFile20GB);
+        sizesToFiles.put(Math.pow(10, 2), sourceFile100B);
+        sizesToFiles.put(Math.pow(10, 3), sourceFile1KB);
+        sizesToFiles.put(Math.pow(10, 4), sourceFile10KB);
+        sizesToFiles.put(Math.pow(10, 5), sourceFile100KB);
+        sizesToFiles.put(Math.pow(10, 6), sourceFile1MB);
+        sizesToFiles.put(Math.pow(10, 7), sourceFile10MB);
+        sizesToFiles.put(Math.pow(10, 8), sourceFile100MB);
+        sizesToFiles.put(Math.pow(10, 9), sourceFile1GB);
+        sizesToFiles.put(Math.pow(10, 10), sourceFile10GB);
+        sizesToFiles.put(2 * Math.pow(10, 10), sourceFile20GB);
         sizesToFiles.put(4 * Math.pow(10, 10), sourceFile40GB);
     }
 
@@ -130,7 +130,7 @@ public class FileLoadProfileTest {
         printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
     }
 
-    @Test
+    @Ignore
     public void profileFileCopyJavaClientUSWestTest() throws Exception {
         String label = "javaClient USCentral";
         setFileCopyConfig(true, label);
@@ -147,10 +147,11 @@ public class FileLoadProfileTest {
     }
 
     private void printSizesToMillisecondsMapAsCSV(Map<Double, List<Long>> sizesToMilliseconds, String label) {
-        System.out.println("file size,elapsed time,file name");
-        System.out.println(label + "," + label + "," + label);
-        for (Map.Entry<Double, String> sizeToFile : sizesToFiles.entrySet()) {
-            Double size = sizeToFile.getKey();
+        System.out.println(label);
+        System.out.println("file size (bytes),elapsed time (ms),file name");
+        List<Double> sizes = new ArrayList<>(sizesToFiles.keySet());
+        Collections.sort(sizes);
+        for (Double size : sizes) {
             List<Long> elapsedTimes = sizesToMilliseconds.get(size);
             String sourceFileName = sizesToFiles.get(size);
 
