@@ -16,6 +16,7 @@ import bio.terra.service.resourcemanagement.google.GoogleResourceConfiguration;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
+import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -84,15 +85,17 @@ public class FileLoadProfileTest {
 
         // build map of source file paths to number of bytes in each, for calculating the bytes/sec
         sizesToFiles = new HashMap<>();
-        sizesToFiles.put(Math.pow(10, 2), sourceFile100B);
-        sizesToFiles.put(Math.pow(10, 3), sourceFile1KB);
-        sizesToFiles.put(Math.pow(10, 4), sourceFile10KB);
-        sizesToFiles.put(Math.pow(10, 5), sourceFile100KB);
-        sizesToFiles.put(Math.pow(10, 6), sourceFile1MB);
-        sizesToFiles.put(Math.pow(10, 7), sourceFile10MB);
-        sizesToFiles.put(Math.pow(10, 8), sourceFile100MB);
-        sizesToFiles.put(Math.pow(10, 9), sourceFile1GB);
-        sizesToFiles.put(Math.pow(10, 10), sourceFile10GB);
+//        sizesToFiles.put(Math.pow(10, 2), sourceFile100B);
+//        sizesToFiles.put(Math.pow(10, 3), sourceFile1KB);
+//        sizesToFiles.put(Math.pow(10, 4), sourceFile10KB);
+//        sizesToFiles.put(Math.pow(10, 5), sourceFile100KB);
+//        sizesToFiles.put(Math.pow(10, 6), sourceFile1MB);
+//        sizesToFiles.put(Math.pow(10, 7), sourceFile10MB);
+//        sizesToFiles.put(Math.pow(10, 8), sourceFile100MB);
+//        sizesToFiles.put(Math.pow(10, 9), sourceFile1GB);
+//        sizesToFiles.put(Math.pow(10, 10), sourceFile10GB);
+//        sizesToFiles.put(2 * Math.pow(10, 10), sourceFile20GB);
+        sizesToFiles.put(4 * Math.pow(10, 10), sourceFile40GB);
     }
 
     @After
@@ -114,6 +117,8 @@ public class FileLoadProfileTest {
     private static String sourceFile100MB = "100MBfile.txt";
     private static String sourceFile1GB = "1GBfile.txt";
     private static String sourceFile10GB = "10GBfile.txt";
+    private static String sourceFile20GB = "20GBfile.bam";
+    private static String sourceFile40GB = "40GBfile.bam";
 
     private static int numRuns = 3;
 
@@ -125,26 +130,10 @@ public class FileLoadProfileTest {
         printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
     }
 
-    @Ignore
-    public void profileFileCopyGsutilUSCentralTest() throws Exception {
-        String label = "gsutil USCentral";
-        setFileCopyConfig(false, label);
-        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameUSCentralRegion);
-        printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
-    }
-
-    @Ignore
+    @Test
     public void profileFileCopyJavaClientUSWestTest() throws Exception {
         String label = "javaClient USCentral";
         setFileCopyConfig(true, label);
-        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameUSWestRegion);
-        printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
-    }
-
-    @Ignore
-    public void profileFileCopyGsutilUSWestTest() throws Exception {
-        String label = "gsutil USCentral";
-        setFileCopyConfig(false, label);
         Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameUSWestRegion);
         printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
     }
@@ -157,19 +146,11 @@ public class FileLoadProfileTest {
         printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
     }
 
-    @Ignore
-    public void profileFileCopyGsutilAsiaTest() throws Exception {
-        String label = "gsutil Asia";
-        setFileCopyConfig(false, label);
-        Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameAsiaRegion);
-        printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
-    }
-
     private void printSizesToMillisecondsMapAsCSV(Map<Double, List<Long>> sizesToMilliseconds, String label) {
         System.out.println("file size,elapsed time,file name");
         System.out.println(label + "," + label + "," + label);
-        for (int sizeCtr = 2; sizeCtr <= 10; sizeCtr++) {
-            Double size = Math.pow(10, sizeCtr);
+        for (Map.Entry<Double, String> sizeToFile : sizesToFiles.entrySet()) {
+            Double size = sizeToFile.getKey();
             List<Long> elapsedTimes = sizesToMilliseconds.get(size);
             String sourceFileName = sizesToFiles.get(size);
 

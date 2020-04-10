@@ -100,20 +100,38 @@ public class GcsPdao {
 //            }
 
             long startTime = System.currentTimeMillis();
-            copyFileJavaClient(storage, sourceBlob, targetPath, bucketResource);
+            copyFileJavaClient(storage, sourceBlob, targetPath, bucketResource, null);
             long elapsedTime = System.currentTimeMillis() - startTime;
-            System.out.println("javaClient,"
+            System.out.println("javaClient,default,"
                 + sourceBlob.getBucket() + "/" + sourceBlob.getName() + ","
                 + sourceBlob.getSize() + "," + elapsedTime);
 
             startTime = System.currentTimeMillis();
-            copyFileGsutil(sourceBlob, targetPath, bucketResource);
-            Blob targetBlob = storage.get(bucketResource.getName(), targetPath,
-                Storage.BlobGetOption.fields(Storage.BlobField.values()));
+            copyFileJavaClient(storage, sourceBlob, targetPath, bucketResource, Long.valueOf(1500));
             elapsedTime = System.currentTimeMillis() - startTime;
-            System.out.println("gsutil,"
+            System.out.println("javaClient,1500,"
                 + sourceBlob.getBucket() + "/" + sourceBlob.getName() + ","
                 + sourceBlob.getSize() + "," + elapsedTime);
+
+            startTime = System.currentTimeMillis();
+            Blob targetBlob = copyFileJavaClient(storage, sourceBlob, targetPath, bucketResource, Long.valueOf(100000));
+            elapsedTime = System.currentTimeMillis() - startTime;
+            System.out.println("javaClient,100000,"
+                + sourceBlob.getBucket() + "/" + sourceBlob.getName() + ","
+                + sourceBlob.getSize() + "," + elapsedTime);
+
+//            startTime = System.currentTimeMillis();
+//            copyFileGsutil(sourceBlob, targetPath, bucketResource);
+//            Blob targetBlob = storage.get(bucketResource.getName(), targetPath,
+//                Storage.BlobGetOption.fields(Storage.BlobField.values()));
+//            elapsedTime = System.currentTimeMillis() - startTime;
+//            System.out.println("gsutil,,"
+//                + sourceBlob.getBucket() + "/" + sourceBlob.getName() + ","
+//                + sourceBlob.getSize() + "," + elapsedTime);
+
+            if (!fileCopyUseJavaClient) {
+                throw new RuntimeException("mariko end flight post-copy");
+            }
 
             // MD5 is computed per-component. So if there are multiple components, the MD5 here is
             // not useful for validating the contents of the file on access. Therefore, we only
@@ -158,16 +176,26 @@ public class GcsPdao {
     private Blob copyFileJavaClient(Storage storage,
                                     Blob sourceBlob,
                                     String targetPath,
-                                    GoogleBucketResource bucketResource) {
-        Long megabytesPerChunk = Long.valueOf(1500);
-        Storage.CopyRequest request =
-            Storage.CopyRequest.newBuilder()
-                .setSource(sourceBlob.getBlobId())
-                .setTarget(BlobId.of(bucketResource.getName(), targetPath))
-                .setMegabytesCopiedPerChunk(megabytesPerChunk)
-                .build();
-        CopyWriter copyWriter = storage.copy(request);
-        return copyWriter.getResult();
+                                    GoogleBucketResource bucketResource,
+                                    Long chunkSizeMB) {
+        if (chunkSizeMB == null) {
+            Storage.CopyRequest request =
+                Storage.CopyRequest.newBuilder()
+                    .setSource(sourceBlob.getBlobId())
+                    .setTarget(BlobId.of(bucketResource.getName(), targetPath))
+                    .build();
+            CopyWriter copyWriter = storage.copy(request);
+            return copyWriter.getResult();
+        } else {
+            Storage.CopyRequest request =
+                Storage.CopyRequest.newBuilder()
+                    .setSource(sourceBlob.getBlobId())
+                    .setTarget(BlobId.of(bucketResource.getName(), targetPath))
+                    .setMegabytesCopiedPerChunk(chunkSizeMB)
+                    .build();
+            CopyWriter copyWriter = storage.copy(request);
+            return copyWriter.getResult();
+        }
     }
 
     private void copyFileGsutil(Blob sourceBlob,
@@ -193,7 +221,7 @@ public class GcsPdao {
 
             // do something if there are any output lines -- I don't think that's expected from gsutil cp
         } catch (IOException ioEx) {
-            throw new PdaoException("gsutil call to copy file failed");
+            throw new PdaoException("gsutil call to copy file failed", ioEx);
         }
     }
 

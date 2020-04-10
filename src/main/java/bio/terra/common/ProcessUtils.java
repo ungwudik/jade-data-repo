@@ -27,7 +27,7 @@ public final class ProcessUtils {
         cmdArgs.add(0, cmd);
         ProcessBuilder procBuilder = new ProcessBuilder(cmdArgs);
         Process proc = procBuilder.start();
-        logger.debug("started process: " + String.join(" ", cmdArgs));
+        logger.info("started process: " + String.join(" ", cmdArgs));
 
         // read in all lines written to stdout
         BufferedReader bufferedReader =
@@ -35,7 +35,7 @@ public final class ProcessUtils {
         String outputLine;
         List<String> outputLines = new ArrayList<>();
         while ((outputLine = bufferedReader.readLine()) != null) {
-            logger.debug(outputLine);
+            logger.info(outputLine);
             outputLines.add(outputLine);
         }
         bufferedReader.close();
