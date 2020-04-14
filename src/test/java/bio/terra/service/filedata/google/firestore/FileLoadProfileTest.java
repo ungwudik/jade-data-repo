@@ -120,7 +120,7 @@ public class FileLoadProfileTest {
     private static String sourceFile20GB = "20GBfile.bam";
     private static String sourceFile40GB = "40GBfile.bam";
 
-    private static int numRuns = 3;
+    private static int numRuns = 1;
 
     @Ignore
     public void profileFileCopyJavaClientUSCentralTest() throws Exception {
@@ -131,7 +131,7 @@ public class FileLoadProfileTest {
 
     @Ignore
     public void profileFileCopyJavaClientUSWestTest() throws Exception {
-        String label = "javaClient USCentral";
+        String label = "javaClient USWest";
         Map<Double, List<Long>> sizesToMilliseconds = profileFileCopy(sourceBucketNameUSWestRegion);
         printSizesToMillisecondsMapAsCSV(sizesToMilliseconds, label);
     }
